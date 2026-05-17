@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Registro de Ponto</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #121214;
+            color: #e1e1e6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .dashboard-container {
+            background-color: #202024;
+            padding: 2.5rem;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 0.5rem;
+            font-size: 1.8rem;
+            color: #00b37e;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background-color: #29292e;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            margin-bottom: 2rem;
+            color: #c4c4cc;
+        }
+
+        .clock {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+        }
+
+        .date {
+            font-size: 1rem;
+            color: #8d8d99;
+            margin-bottom: 2.5rem;
+        }
+
+        .timer-display {
+            font-size: 1.2rem;
+            color: #fba94c;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+            display: none;
+        }
+
+        .grid-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #ffffff;
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background-color: #29292e !important;
+            color: #7c7c8a;
+        }
+
+        .btn-entry { background-color: #00875f; }
+        .btn-entry:hover:not(:disabled) { background-color: #00b37e; }
+
+        .btn-exit { background-color: #aa2834; }
+        .btn-exit:hover:not(:disabled) { background-color: #c5303f; }
+
+        .btn-lunch { background-color: #ece133; color: #121214; }
+        .btn-lunch:hover:not(:disabled) { background-color: #fff052; }
+
+        .btn-service { background-color: #0073b1; }
+        .btn-service:hover:not(:disabled) { background-color: #0091ea; }
+
+        .log-section {
+            margin-top: 2rem;
+            text-align: left;
+            border-top: 1px solid #29292e;
+            padding-top: 1rem;
+        }
+
+        .log-title {
+            font-size: 0.9rem;
+            color: #8d8d99;
+            margin-bottom: 0.5rem;
+        }
+
+        .log-list {
+            list-style: none;
+            max-height: 120px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            color: #c4c4cc;
+        }
+
+        .log-item {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #29292e;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <h1>Registro de Ponto</h1>
+        <div class="status-badge" id="current-status">Status: Fora do Expediente</div>
+
+        <div class="clock" id="live-clock">00:00:00</div>
+        <div class="date" id="live-date">Carregando data...</div>
+
+        <div class="timer-display" id="lunch-timer">Almoço restante: 30:00</div>
+
+        <div class="grid-buttons">
+            <button class="btn btn-entry" id="btn-entry" onclick="batidaPonto('entry')">Entrada</button>
+            <button class="btn btn-exit" id="btn-exit" onclick="batidaPonto('exit')" disabled>Saída</button>
+            <button class="btn btn-lunch" id="btn-lunch" onclick="batidaPonto('have_lunch')" disabled>Almoço</button>
+            <button class="btn btn-service" id="btn-service" onclick="batidaPonto('return_lunch')" disabled>Serviço</button>
+        </div>
+
+        <div class="log-section">
+            <div class="log-title">Histórico Recente:</div>
+            <ul class="log-list" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        // Mapeamento exato das rotas do Xano fornecidas por você
+        const ENDPOINTS = {
+            'entry': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches',
+            'exit': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches_exit',
+            'have_lunch': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches_almoco',
+            'return_lunch': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches_almoco_return'
+        };
+
+        const USER_ID_MOCK = 1; // ID do usuário logado no sistema
+
+        // Estados internos do Front-end
+        let jaEntrouHoje = false;
+        let entradaAtiva = false;
+        let emAlmoco = false;
+        let almoçoUtilizado = false;
+        let tempoAlmocoRestante = 30 * 60; // 30 minutos em segundos
+        let intervaloAlmoco;
+
+        // Relógio em Tempo Real
+        function atualizarRelogio() {
+            const agora = new Date();
+            const horas = String(agora.getHours()).padStart(2, '0');
+            const minutos = String(agora.getMinutes()).padStart(2, '0');
+            const segundos = String(agora.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('live-clock').textContent = `${horas}:${minutos}:${segundos}`;
+            
+            const opcoes = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('live-date').textContent = agora.toLocaleDateString('pt-BR', opcoes);
+
+            verificarRegrasHorario(agora.getHours());
+        }
+
+        // Regras para ativar/desativar botões na tela
+        function verificarRegrasHorario(horaAtual) {
+            const btnEntry = document.getElementById('btn-entry');
+            const btnLunch = document.getElementById('btn-lunch');
+            const btnExit = document.getElementById('btn-exit');
+            const btnService = document.getElementById('btn-service');
+
+            btnEntry.disabled = jaEntrouHoje || entradaAtiva || emAlmoco;
+            btnExit.disabled = !entradaAtiva || emAlmoco;
+
+            // Almoço liberado na janela das 14h às 15h
+            const janelaAlmocoDisponivel = (horaAtual >= 14 && horaAtual < 15);
+            if (entradaAtiva && janelaAlmocoDisponivel && !almoçoUtilizado && !emAlmoco) {
+                btnLunch.disabled = false;
+            } else {
+                btnLunch.disabled = true;
+            }
+
+            btnService.disabled = !emAlmoco;
+        }
+
+        // Função principal conectada ao Xano
+        async function batidaPonto(tipo) {
+            const timestampAtual = new Date().toISOString();
+            const urlAlvo = ENDPOINTS[tipo];
+
+            // Bloqueia temporariamente as interações visuais antes da requisição terminar
+            mudarEstadoVisual(tipo);
+
+            try {
+                const response = await fetch(urlAlvo, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: USER_ID_MOCK,
+                        type: tipo,
+                        timestamp: timestampAtual
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro na API: ${response.statusText}`);
+                }
+
+                const dados = await response.json();
+                console.log(`Sucesso no endpoint [${tipo}]:`, dados);
+                
+                // Registra visualmente apenas se a API respondeu sucesso
+                adicionarLogVisual(tipo);
+
+            } catch (error) {
+                console.error(`Falha ao registrar ponto para o tipo [${tipo}]:`, error);
+                alert(`Erro ao salvar no servidor. Verifique as regras no Xano.`);
+                // Reverte os estados visuais em caso de falha crítica na API
+                location.reload(); 
+            }
+
+            atualizarRelogio();
+        }
+
+        // Controla as variáveis de estado de acordo com o clique
+        function mudarEstadoVisual(tipo) {
+            if (tipo === 'entry') {
+                jaEntrouHoje = true;
+                entradaAtiva = true;
+                document.getElementById('current-status').textContent = "Status: Trabalhando";
+            } 
+            else if (tipo === 'exit') {
+                entradaAtiva = false;
+                document.getElementById('current-status').textContent = "Status: Turno Finalizado";
+            } 
+            else if (tipo === 'have_lunch') {
+                emAlmoco = true;
+                almoçoUtilizado = true;
+                document.getElementById('current-status').textContent = "Status: Em Horário de Almoço";
+                iniciarTimerAlmoco();
+            } 
+            else if (tipo === 'return_lunch') {
+                finalizarAlmoco();
+            }
+        }
+
+        // Cronômetro regressivo
+        function iniciarTimerAlmoco() {
+            const timerDisplay = document.getElementById('lunch-timer');
+            timerDisplay.style.display = 'block';
+            tempoAlmocoRestante = 30 * 60; // Força 30 minutos cravados
+
+            intervaloAlmoco = setInterval(() => {
+                tempoAlmocoRestante--;
+
+                const min = String(Math.floor(tempoAlmocoRestante / 60)).padStart(2, '0');
+                const seg = String(tempoAlmocoRestante % 60).padStart(2, '0');
+                timerDisplay.textContent = `Almoço restante: ${min}:${seg}`;
+
+                // SE BATER 30 MINUTOS: Envia o ponto automaticamente
+                if (tempoAlmocoRestante <= 0) {
+                    clearInterval(intervaloAlmoco);
+                    finalizarAlmoco();
+                    batidaPonto('return_lunch'); // Disparo automatizado para o Xano
+                }
+            }, 1000);
+        }
+
+        function finalizarAlmoco() {
+            clearInterval(intervaloAlmoco);
+            emAlmoco = false;
+            document.getElementById('lunch-timer').style.display = 'none';
+            document.getElementById('current-status').textContent = "Status: Trabalhando";
+        }
+
+        function adicionarLogVisual(tipo) {
+            const lista = document.getElementById('log-list');
+            const item = document.createElement('li');
+            item.className = 'log-item';
+            const horaFormatada = new Date().toLocaleTimeString('pt-BR');
+            
+            const traducoes = {
+                'entry': 'Entrada Registrada',
+                'exit': 'Saída Registrada',
+                'have_lunch': 'Iniciou Almoço',
+                'return_lunch': 'Retorno do Almoço (Serviço)'
+            };
+
+            item.textContent = `[${horaFormatada}] - ${traducoes[tipo]}`;
+            lista.prepend(item);
+        }
+
+        setInterval(atualizarRelogio, 1000);
+        atualizarRelogio();
+    </script>
+</body>
+</html>
