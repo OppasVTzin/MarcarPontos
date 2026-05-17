@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Autenticação</title>
     <style>
-        /* --- ESTILIZAÇÃO GLOBAL E TEMA --- */
+        /* --- ESTILIZAÇÃO GLOBAL E TEMA BRANCO E LARANJA --- */
         * {
             margin: 0;
             padding: 0;
@@ -18,7 +18,7 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            background: linear-gradient(135deg, #6366f1, #a855f7);
+            background: linear-gradient(135deg, #ffedd5, #f97316);
             padding: 20px;
         }
 
@@ -26,10 +26,11 @@
             background-color: #ffffff;
             padding: 40px;
             border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 30px rgba(249, 115, 22, 0.15);
             width: 100%;
             max-width: 420px;
             transition: all 0.3s ease;
+            border: 1px solid #ffedd5;
         }
 
         .auth-box h2 {
@@ -69,14 +70,14 @@
         }
 
         .input-group input:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+            border-color: #f97316;
+            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
         }
 
         .btn-submit {
             width: 100%;
             padding: 12px;
-            background-color: #6366f1;
+            background-color: #f97316;
             color: white;
             border: none;
             border-radius: 8px;
@@ -88,10 +89,10 @@
         }
 
         .btn-submit:hover {
-            background-color: #4f46e5;
+            background-color: #ea580c;
         }
 
-        /* --- MENSSAGENS DE FEEDBACK --- */
+        /* --- MENSAGENS DE FEEDBACK --- */
         .message {
             padding: 10px;
             border-radius: 6px;
@@ -106,9 +107,9 @@
             border: 1px solid #fca5a5;
         }
         .message.success {
-            background-color: #dcfce7;
-            color: #15803d;
-            border: 1px solid #86efac;
+            background-color: #fef3c7;
+            color: #d97706;
+            border: 1px solid #fde68a;
         }
 
         /* --- LINKS DE ALTERNÂNCIA --- */
@@ -120,7 +121,7 @@
         }
 
         .footer-links a {
-            color: #6366f1;
+            color: #f97316;
             text-decoration: none;
             font-weight: 500;
         }
@@ -137,7 +138,6 @@
             font-size: 13px;
         }
 
-        /* Classe utilitária para esconder as telas inativas */
         .hidden {
             display: none;
         }
@@ -161,9 +161,11 @@
                     <input type="password" id="login-password" required placeholder="Sua senha">
                 </div>
                 
-                <a href="#" class="forgot-password-link footer-links"><a href="#" onclick="switchForm('box-reset')">Esqueceu a senha?</a></a>
+                <div class="forgot-password-link">
+                    <a href="#" onclick="switchForm('box-reset')">Esqueceu a senha?</a>
+                </div>
                 
-                <button type="submit" class="btn-submit" onclick="() => window.location.href = 'dashboard.html'">Entrar</button>
+                <button type="submit" class="btn-submit">Entrar</button>
                 <div id="msg-login" class="message"></div>
             </form>
             
@@ -209,7 +211,7 @@
                     <input type="email" id="reset-email" required placeholder="seu@email.com">
                 </div>
                 
-                <button type="submit" class="btn-submit">Enviar E-mail de Recuperação</button>
+                <button type="submit" class="btn-submit">Enviar Recuperação</button>
                 <div id="msg-reset" class="message"></div>
             </form>
             
@@ -249,30 +251,23 @@
     </div>
 
     <script>
-        // CONFIGURAÇÃO DAS APIS DO XANO
-        const API_URLS = {
-            login: 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/login',
-            signup: 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/signup',
-            resetPassword: 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/reset_password',
-            newPassword: 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/new_password'
-        };
+        // Variáveis de ambiente das APIs separadas individualmente
+        const API_LOGIN_URL = 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/login';
+        const API_SIGNUP_URL = 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/signup';
+        const API_RESET_PASSWORD_URL = 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/reset_password';
+        const API_NEW_PASSWORD_URL = 'https://x8ki-letl-twmt.n7.xano.io/api:uWA7DOkl/new_password';
 
-        // Função auxiliar para alternar entre as telas
         function switchForm(boxId) {
-            // Esconde todas as caixas
             document.querySelectorAll('.auth-box').forEach(box => {
                 box.classList.add('hidden');
             });
-            // Limpa mensagens anteriores de feedback
             document.querySelectorAll('.message').forEach(msg => {
                 msg.style.display = 'none';
                 msg.textContent = '';
             });
-            // Mostra a caixa desejada
             document.getElementById(boxId).classList.remove('hidden');
         }
 
-        // Função genérica para exibir mensagens de feedback na tela
         function showMessage(elementId, text, isSuccess = false) {
             const msgElement = document.getElementById(elementId);
             msgElement.textContent = text;
@@ -291,18 +286,20 @@
             const password = document.getElementById('login-password').value;
 
             try {
-                const response = await fetch(API_URLS.login, {
+                const response = await fetch(API_LOGIN_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ email, senha: password })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    showMessage('msg-login', 'Login realizado com sucesso!', true);
+                    showMessage('msg-login', 'Login realizado com sucesso! Redirecionando...', true);
                     console.log('Dados do Usuário/Token:', data);
-                    // Exemplo: localStorage.setItem('token', data.authToken);
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1000);
                 } else {
                     showMessage('msg-login', data.message || 'Erro ao fazer login. Verifique seus dados.');
                 }
@@ -320,10 +317,10 @@
             const password = document.getElementById('sign-password').value;
 
             try {
-                const response = await fetch(API_URLS.signup, {
+                const response = await fetch(API_SIGNUP_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password })
+                    body: JSON.stringify({ name, email, senha: password })
                 });
 
                 const data = await response.json();
@@ -340,13 +337,13 @@
             }
         });
 
-        // ================= OPERAÇÃO: SOLICITAR RESET DE SENHA =================
+        // ================= OPERAÇÃO: SOLICITAR RESET =================
         document.getElementById('form-reset').addEventListener('submit', async function(e) {
             e.preventDefault();
             const email = document.getElementById('reset-email').value;
 
             try {
-                const response = await fetch(API_URLS.resetPassword, {
+                const response = await fetch(API_RESET_PASSWORD_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email })
@@ -356,7 +353,6 @@
 
                 if (response.ok) {
                     showMessage('msg-reset', 'Instruções enviadas para o seu e-mail!', true);
-                    // Opcional: Redirecionar para a tela de digitar a nova senha após alguns segundos
                     setTimeout(() => { switchForm('box-new-password'); }, 2500);
                 } else {
                     showMessage('msg-reset', data.message || 'E-mail não encontrado.');
@@ -374,15 +370,11 @@
             const token = document.getElementById('new-token').value;
             const password = document.getElementById('new-password').value;
 
-            // Ajuste aqui a estrutura de payload baseando-se no que a sua API do Xano espera. 
-            // Geralmente envia-se o token recebido e a nova senha.
-            const payload = { email, token, password };
-
             try {
-                const response = await fetch(API_URLS.newPassword, {
+                const response = await fetch(API_NEW_PASSWORD_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ email, token, senha: password })
                 });
 
                 const data = await response.json();
