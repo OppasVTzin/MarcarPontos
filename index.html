@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marcador de Ponto</title>
+
+  <style>
+    *{
+      margin:0;
+      padding:0;
+      box-sizing:border-box;
+      font-family:Arial, Helvetica, sans-serif;
+    }
+
+    body{
+      background:#101820;
+      color:white;
+      display:flex;
+      justify-content:center;
+      align-items:flex-start;
+      min-height:100vh;
+      padding:20px;
+    }
+
+    .container{
+      width:100%;
+      max-width:700px;
+      background:#17212b;
+      border-radius:20px;
+      padding:30px;
+      box-shadow:0 0 20px rgba(0,0,0,.4);
+    }
+
+    h1{
+      text-align:center;
+      margin-bottom:20px;
+      color:#4cc9f0;
+    }
+
+    .employee{
+      background:#22303c;
+      padding:15px;
+      border-radius:12px;
+      margin-bottom:20px;
+    }
+
+    .employee h2{
+      font-size:24px;
+      margin-bottom:8px;
+    }
+
+    .clock{
+      text-align:center;
+      font-size:42px;
+      font-weight:bold;
+      margin:25px 0;
+      color:#4cc9f0;
+    }
+
+    .buttons{
+      display:flex;
+      gap:10px;
+      margin-bottom:20px;
+    }
+
+    button{
+      flex:1;
+      padding:15px;
+      border:none;
+      border-radius:12px;
+      font-size:16px;
+      font-weight:bold;
+      cursor:pointer;
+      transition:.2s;
+    }
+
+    button:hover:not(:disabled){
+      transform:scale(1.03);
+    }
+
+    button:disabled {
+      background: #3a444d !important;
+      color: #777 !important;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .entrada{
+      background:#06d6a0;
+      color:white;
+    }
+
+    .saida{
+      background:#ef476f;
+      color:white;
+    }
+
+    .status{
+      margin-top:15px;
+      text-align:center;
+      color:#ddd;
+    }
+
+    .card{
+      background:#22303c;
+      padding:20px;
+      border-radius:12px;
+      margin-top:20px;
+    }
+
+    .card h3{
+      margin-bottom:15px;
+      color:#4cc9f0;
+    }
+
+    .info{
+      margin-bottom:10px;
+      font-size:16px;
+    }
+
+    .logs{
+      margin-top:15px;
+    }
+
+    .log-item{
+      background:#1a2630;
+      padding:12px;
+      border-radius:10px;
+      margin-bottom:10px;
+      line-height:1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Marcador de Ponto</h1>
+
+    <div class="employee">
+      <h2>Felipe Alves</h2>
+      <p>ID Funcionário: 1</p>
+    </div>
+
+    <div class="clock" id="clock">00:00:00</div>
+
+    <div class="buttons">
+      <button class="entrada" id="btn-entrada" onclick="registrarPonto('entrada')" disabled>
+        Entrada
+      </button>
+      <button class="saida" id="btn-saida" onclick="registrarPonto('saida')" disabled>
+        Saída
+      </button>
+    </div>
+
+    <div class="status" id="status">Verificando estado atual...</div>
+
+    <div class="card">
+      <h3>Controle de Horas (Mês Atual)</h3>
+      <div class="info">
+        Total Acumulado: <strong id="total-hours">0h 00m</strong>
+      </div>
+      <div class="info">
+        Hora Extra: <strong id="extra-hours">Não</strong>
+      </div>
+      <div class="info">
+        Banco de Horas: <strong id="bank-hours">Não</strong>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Histórico de Pontos (Últimos 30 dias)</h3>
+      <div class="logs" id="history"></div>
+    </div>
+  </div>
+
+  <script>
+    // =====================================
+    // CONFIGURAÇÕES
+    // =====================================
+    const USER_ID = 1;
+    const JORNADA_DIARIA_MINUTOS = 4 * 60; 
+    const LIMITE_EXTRAS_MINUTOS = 30 * JORNADA_DIARIA_MINUTOS; 
+
+    const API_POINTS = "https://x8ki-letl-twmt.n7.xano.io/api:40vlMN3h/points";
+    const API_EXTRAS = "https://x8ki-letl-twmt.n7.xano.io/api:40vlMN3h/extras";
+
+    // Guardar o registro de hoje globalmente para o relógio poder ler
+    let ultimoRegistroHoje = null;
+
+    // =====================================
+    // RELÓGIO COM VERIFICAÇÃO DE MEIA NOITE
+    // =====================================
+    function atualizarRelogio(){
+      const agora = new Date();
+      document.getElementById("clock").innerText = agora.toLocaleTimeString("pt-BR");
+
+      // Se bater exatamente meia-noite (00:00:00), força a releitura das regras para resetar o dia
+      if (agora.getHours() === 0 && agora.getMinutes() === 0 && agora.getSeconds() === 0) {
+        processarRegrasEHistorico();
+      } else {
+        // Como a regra das 13:00 depende do horário, reavaliamos os botões a cada segundo
+        gerenciarBotoes(ultimoRegistroHoje);
+      }
+    }
+    setInterval(atualizarRelogio, 1000);
+    atualizarRelogio();
+
+    // =====================================
+    // CONTROLE DE ESTADO DOS BOTÕES (COM TRAVA DE HORÁRIO)
+    // =====================================
+    function gerenciarBotoes(registroHoje) {
+      const btnEntrada = document.getElementById("btn-entrada");
+      const btnSaida = document.getElementById("btn-saida");
+      const statusEl = document.getElementById("status");
+
+      const agora = new Date();
+      const horaAtual = agora.getHours();
+
+      // Regra 1: Se a hora atual for menor que 13h, Entrada fica estritamente desativada
+      const bloqueadoPorHorario = horaAtual < 13;
+
+      if (!registroHoje) {
+        // Cenário: Não bateu nada hoje
+        if (bloqueadoPorHorario) {
+          btnEntrada.disabled = true;
+          statusEl.innerText = "Entrada bloqueada. Permitida apenas a partir das 13:00.";
+        } else {
+          btnEntrada.disabled = false;
+          statusEl.innerText = "Aguardando registro de Entrada.";
+        }
+        btnSaida.disabled = true; 
+      } else if (registroHoje.Entrada && !registroHoje.Saida) {
+        // Cenário: Já bateu Entrada, mas falta a Saída
+        btnEntrada.disabled = true; // Fica desativado porque já foi batido
+        btnSaida.disabled = false;  // Libera a saída
+        statusEl.innerText = "Em atividade. Não esqueça de registrar a Saída.";
+      } else if (registroHoje.Entrada && registroHoje.Saida) {
+        // Cenário: Já encerrou os dois pontos do dia
+        btnEntrada.disabled = true;
+        btnSaida.disabled = true;
+        statusEl.innerText = "Expediente de hoje concluído!";
+      }
+    }
+
+    // =====================================
+    // REGISTRAR PONTO
+    // =====================================
+    async function registrarPonto(tipo){
+      const btnEntrada = document.getElementById("btn-entrada");
+      const btnSaida = document.getElementById("btn-saida");
+      const statusEl = document.getElementById("status");
+
+      btnEntrada.disabled = true;
+      btnSaida.disabled = true;
+      statusEl.innerText = "Processando...";
+
+      try {
+        const agora = new Date();
+        const hojeStr = agora.toLocaleDateString("pt-BR");
+
+        const responseGet = await fetch(API_POINTS);
+        const dados = await responseGet.json();
+        const meusRegistros = dados.filter(item => item.user_id === USER_ID);
+
+        const registroHoje = meusRegistros.find(item => {
+          const dataItem = new Date(item.created_at || item.Entrada).toLocaleDateString("pt-BR");
+          return dataItem === hojeStr;
+        });
+
+        let url = API_POINTS;
+        let metodo = "POST";
+        let corpoDados = { user_id: USER_ID };
+
+        if (tipo === "entrada") {
+          if (agora.getHours() < 13) {
+            statusEl.innerText = "Erro: Entrada não permitida antes das 13:00.";
+            processarRegrasEHistorico();
+            return;
+          }
+          if (registroHoje && registroHoje.Entrada) return;
+          corpoDados.Entrada = agora.toISOString();
+        } else {
+          if (!registroHoje || registroHoje.Saida) return;
+          
+          metodo = "PATCH"; 
+          url = `${API_POINTS}/${registroHoje.id}`;
+          corpoDados = { Saida: agora.toISOString() };
+        }
+
+        const responseEnvio = await fetch(url, {
+          method: metodo,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(corpoDados)
+        });
+
+        if (!responseEnvio.ok) throw new Error("Erro ao salvar no banco");
+
+        await processarRegrasEHistorico();
+
+      } catch (error) {
+        console.error(error);
+        statusEl.innerText = "Erro ao processar o ponto no servidor.";
+        processarRegrasEHistorico();
+      }
+    }
+
+    // =====================================
+    // PROCESSAR HISTÓRICO E REGRAS DE HORAS
+    // =====================================
+    async function processarRegrasEHistorico(){
+      try{
+        const response = await fetch(API_POINTS);
+        if(!response.ok) return;
+        
+        const dados = await response.json();
+        const historyContainer = document.getElementById("history");
+        historyContainer.innerHTML = "";
+
+        const hoje = new Date();
+        const hojeStr = hoje.toLocaleDateString("pt-BR");
+        const umMesAtras = new Date();
+        umMesAtras.setMonth(hoje.getMonth() - 1);
+
+        const filtrados = dados.filter(item => {
+          const dataItem = new Date(item.created_at || item.Entrada);
+          return item.user_id === USER_ID && dataItem >= umMesAtras;
+        });
+
+        // Atualiza a referência global do ponto de hoje e atualiza botões
+        ultimoRegistroHoje = filtrados.find(item => {
+          const dataItem = new Date(item.created_at || item.Entrada).toLocaleDateString("pt-BR");
+          return dataItem === hojeStr;
+        });
+        gerenciarBotoes(ultimoRegistroHoje);
+
+        if(filtrados.length === 0) {
+          historyContainer.innerHTML = "<p style='text-align:center; color:#888;'>Nenhum ponto registrado.</p>";
+          return;
+        }
+
+        filtrados.sort((a, b) => new Date(b.created_at || b.Entrada) - new Date(a.created_at || a.Entrada));
+
+        let totalMinutosTrabalhadosNoMes = 0;
+        let totalMinutosEsperadosNoMes = 0;
+
+        filtrados.forEach(item => {
+          const div = document.createElement("div");
+          div.classList.add("log-item");
+
+          const dataFormatada = new Date(item.created_at || item.Entrada).toLocaleDateString("pt-BR");
+          const horaEntrada = item.Entrada ? new Date(item.Entrada).toLocaleTimeString("pt-BR") : "-";
+          const horaSaida = item.Saida ? new Date(item.Saida).toLocaleTimeString("pt-BR") : "-";
+
+          let textoSaldo = "Aguardando saída";
+          totalMinutosEsperadosNoMes += JORNADA_DIARIA_MINUTOS;
+
+          if (item.Entrada && item.Saida) {
+            const msTrabalhados = new Date(item.Saida) - new Date(item.Entrada);
+            const minutosTrabalhados = Math.floor(msTrabalhados / 1000 / 60);
+            totalMinutosTrabalhadosNoMes += minutosTrabalhados;
+
+            const saldoDoDia = minutosTrabalhados - JORNADA_DIARIA_MINUTOS;
+            const horasSaldo = Math.floor(Math.abs(saldoDoDia) / 60);
+            const minsSaldo = Math.abs(saldoDoDia) % 60;
+            const formatoTempo = `${horasSaldo}h ${minsSaldo.toString().padStart(2, '0')}m`;
+
+            if (saldoDoDia > 0) {
+              textoSaldo = `<span style="color: #06d6a0;">+${formatoTempo} (Extra)</span>`;
+            } else if (saldoDoDia < 0) {
+              textoSaldo = `<span style="color: #ef476f;">-${formatoTempo} (Devendo)</span>`;
+            } else {
+              textoSaldo = `<span style="color: #ddd;">Jornada cumprida</span>`;
+            }
+          }
+
+          div.innerHTML = `
+            <strong>Data:</strong> ${dataFormatada} | Saldo: ${textoSaldo}<br>
+            <strong>Entrada:</strong> ${horaEntrada} | <strong>Saída:</strong> ${horaSaida}
+          `;
+          historyContainer.appendChild(div);
+        });
+
+        const saldoGeralMinutos = totalMinutosTrabalhadosNoMes - totalMinutosEsperadosNoMes;
+        const hrsAcumuladas = Math.floor(Math.abs(saldoGeralMinutos) / 60);
+        const minsAcumuladas = Math.abs(saldoGeralMinutos) % 60;
+        const textoGeral = `${saldoGeralMinutos >= 0 ? '+' : '-'}${hrsAcumuladas}h ${minsAcumuladas.toString().padStart(2, '0')}m`;
+        
+        document.getElementById("total-hours").innerText = textoGeral;
+        document.getElementById("total-hours").style.color = saldoGeralMinutos >= 0 ? "#06d6a0" : "#ef476f";
+
+        let ehHoraExtra = false;
+        let ehBancoHoras = false;
+
+        if (saldoGeralMinutos > 0) {
+          if (saldoGeralMinutos <= LIMITE_EXTRAS_MINUTOS) {
+            ehHoraExtra = true;
+          } else {
+            ehBancoHoras = true;
+          }
+        }
+
+        document.getElementById("extra-hours").innerText = ehHoraExtra ? "Sim" : "Não";
+        document.getElementById("bank-hours").innerText = ehBancoHoras ? "Sim" : "Não";
+
+        await atualizarTabelaExtrasNoBanco(ehHoraExtra, ehBancoHoras, filtrados[0]?.id);
+
+      } catch(error){
+        console.error("Erro ao processar regras:", error);
+      }
+    }
+
+    async function atualizarTabelaExtrasNoBanco(isExtra, isBank, lastPointId) {
+      if (!lastPointId) return;
+      try {
+        await fetch(API_EXTRAS, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            points_id: lastPointId,
+            isHourExtra: isExtra,
+            isBankHour: isBank
+          })
+        });
+      } catch (e) {
+        console.error("Erro ao atualizar tabela extras:", e);
+      }
+    }
+
+    // Inicialização automática
+    processarRegrasEHistorico();
+  </script>
+</body>
+</html>
