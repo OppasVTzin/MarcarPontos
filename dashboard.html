@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Registro de Ponto</title>
+    <style>
+        /* --- REESTRUTURAÇÃO TEMA BRANCO E LARANJA --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #fcfcfd;
+            color: #1f2937;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: radial-gradient(circle at top right, #ffedd5 0%, #fcfcfd 70%);
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            background-color: #ffffff;
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(234, 88, 12, 0.08);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            border: 1px solid #fed7aa;
+        }
+
+        h1 {
+            margin-bottom: 0.5rem;
+            font-size: 1.8rem;
+            color: #ea580c;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.4rem 1rem;
+            background-color: #fff7ed;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-bottom: 2rem;
+            color: #c2410c;
+            font-weight: 600;
+            border: 1px solid #ffedd5;
+        }
+
+        .clock {
+            font-size: 3.2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #111827;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .date {
+            font-size: 1rem;
+            color: #6b7280;
+            margin-bottom: 2.5rem;
+        }
+
+        .timer-display {
+            font-size: 1.2rem;
+            color: #ea580c;
+            margin-bottom: 1.5rem;
+            font-weight: 700;
+            background-color: #fff7ed;
+            padding: 8px 16px;
+            border-radius: 8px;
+            display: none;
+            border: 1px dashed #f97316;
+        }
+
+        .grid-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #ffffff;
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background-color: #f3f4f6 !important;
+            color: #9ca3af !important;
+            border: 1px solid #e5e7eb;
+        }
+
+        /* Paleta Laranja Aplicada aos Estados dos Botões */
+        .btn-entry { background-color: #ea580c; }
+        .btn-entry:hover:not(:disabled) { background-color: #c2410c; }
+
+        .btn-exit { background-color: #9a3412; }
+        .btn-exit:hover:not(:disabled) { background-color: #7c2d12; }
+
+        .btn-lunch { background-color: #f97316; }
+        .btn-lunch:hover:not(:disabled) { background-color: #ea580c; }
+
+        .btn-service { background-color: #fdba74; color: #7c2d12; }
+        .btn-service:hover:not(:disabled) { background-color: #f97316; color: #fff; }
+
+        .log-section {
+            margin-top: 2rem;
+            text-align: left;
+            border-top: 1px solid #f3f4f6;
+            padding-top: 1rem;
+        }
+
+        .log-title {
+            font-size: 0.9rem;
+            color: #4b5563;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .log-list {
+            list-style: none;
+            max-height: 120px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            color: #4b5563;
+        }
+
+        .log-item {
+            padding: 0.4rem 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <h1>Registro de Ponto</h1>
+        <div class="status-badge" id="current-status">Status: Fora do Expediente</div>
+
+        <div class="clock" id="live-clock">00:00:00</div>
+        <div class="date" id="live-date">Carregando data...</div>
+
+        <div class="timer-display" id="lunch-timer">Almoço restante: 30:00</div>
+
+        <div class="grid-buttons">
+            <button class="btn btn-entry" id="btn-entry" onclick="batidaPonto('entry')">Entrada</button>
+            <button class="btn btn-exit" id="btn-exit" onclick="batidaPonto('exit')" disabled>Saída</button>
+            <button class="btn btn-lunch" id="btn-lunch" onclick="batidaPonto('have_lunch')" disabled>Almoço</button>
+            <button class="btn btn-service" id="btn-service" onclick="batidaPonto('return_lunch')" disabled>Serviço</button>
+        </div>
+
+        <div class="log-section">
+            <div class="log-title">Histórico Recente:</div>
+            <ul class="log-list" id="log-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        const ENDPOINTS = {
+            'entry': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches',
+            'exit': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches_exit',
+            'have_lunch': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches_almoco',
+            'return_lunch': 'https://x8ki-letl-twmt.n7.xano.io/api:VRvrLgZQ/punches_almoco_return'
+        };
+
+        const USER_ID_MOCK = 1;
+
+        let jaEntrouHoje = false;
+        let entradaAtiva = false;
+        let emAlmoco = false;
+        let almoçoUtilizado = false;
+        let tempoAlmocoRestante = 30 * 60; 
+        let intervaloAlmoco;
+
+        function atualizarRelogio() {
+            const agora = new Date();
+            const horas = String(agora.getHours()).padStart(2, '0');
+            const minutos = String(agora.getMinutes()).padStart(2, '0');
+            const segundos = String(agora.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('live-clock').textContent = `${horas}:${minutos}:${segundos}`;
+            
+            const opcoes = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('live-date').textContent = agora.toLocaleDateString('pt-BR', opcoes);
+
+            verificarRegrasHorario(agora.getHours());
+        }
+
+        function verificarRegrasHorario(horaAtual) {
+            const btnEntry = document.getElementById('btn-entry');
+            const btnLunch = document.getElementById('btn-lunch');
+            const btnExit = document.getElementById('btn-exit');
+            const btnService = document.getElementById('btn-service');
+
+            btnEntry.disabled = jaEntrouHoje || entradaAtiva || emAlmoco;
+            btnExit.disabled = !entradaAtiva || emAlmoco;
+
+            // Almoço liberado na janela das 14h às 15h
+            const janelaAlmocoDisponivel = (horaAtual >= 14 && horaAtual < 15);
+            if (entradaAtiva && janelaAlmocoDisponivel && !almoçoUtilizado && !emAlmoco) {
+                btnLunch.disabled = false;
+            } else {
+                btnLunch.disabled = true;
+            }
+
+            btnService.disabled = !emAlmoco;
+        }
+
+        async function batidaPonto(tipo) {
+            const timestampAtual = new Date().toISOString();
+            const urlAlvo = ENDPOINTS[tipo];
+
+            mudarEstadoVisual(tipo);
+
+            try {
+                const response = await fetch(urlAlvo, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: USER_ID_MOCK,
+                        type: tipo,
+                        timestamp: timestampAtual
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro na API: ${response.statusText}`);
+                }
+
+                const dados = await response.json();
+                console.log(`Sucesso no endpoint [${tipo}]:`, dados);
+                adicionarLogVisual(tipo);
+
+            } catch (error) {
+                console.error(`Falha ao registrar ponto para o tipo [${tipo}]:`, error);
+                alert(`Erro ao salvar no servidor. Verifique as regras no Xano.`);
+                location.reload(); 
+            }
+
+            atualizarRelogio();
+        }
+
+        function mudarEstadoVisual(tipo) {
+            if (tipo === 'entry') {
+                jaEntrouHoje = true;
+                entradaAtiva = true;
+                document.getElementById('current-status').textContent = "Status: Trabalhando";
+            } 
+            else if (tipo === 'exit') {
+                entradaAtiva = false;
+                document.getElementById('current-status').textContent = "Status: Turno Finalizado";
+            } 
+            else if (tipo === 'have_lunch') {
+                emAlmoco = true;
+                almoçoUtilizado = true;
+                document.getElementById('current-status').textContent = "Status: Em Horário de Almoço";
+                iniciarTimerAlmoco();
+            } 
+            else if (tipo === 'return_lunch') {
+                finalizarAlmoco();
+            }
+        }
+
+        function iniciarTimerAlmoco() {
+            const timerDisplay = document.getElementById('lunch-timer');
+            timerDisplay.style.display = 'block';
+            tempoAlmocoRestante = 30 * 60; 
+
+            intervaloAlmoco = setInterval(() => {
+                tempoAlmocoRestante--;
+
+                const min = String(Math.floor(tempoAlmocoRestante / 60)).padStart(2, '0');
+                const seg = String(tempoAlmocoRestante % 60).padStart(2, '0');
+                timerDisplay.textContent = `Almoço restante: ${min}:${seg}`;
+
+                if (tempoAlmocoRestante <= 0) {
+                    clearInterval(intervaloAlmoco);
+                    finalizarAlmoco();
+                    batidaPonto('return_lunch'); 
+                }
+            }, 1000);
+        }
+
+        function finalizarAlmoco() {
+            clearInterval(intervaloAlmoco);
+            emAlmoco = false;
+            document.getElementById('lunch-timer').style.display = 'none';
+            document.getElementById('current-status').textContent = "Status: Trabalhando";
+        }
+
+        function adicionarLogVisual(tipo) {
+            const lista = document.getElementById('log-list');
+            const item = document.createElement('li');
+            item.className = 'log-item';
+            const horaFormatada = new Date().toLocaleTimeString('pt-BR');
+            
+            const traducoes = {
+                'entry': 'Entrada Registrada',
+                'exit': 'Saída Registrada',
+                'have_lunch': 'Iniciou Almoço',
+                'return_lunch': 'Retorno do Almoço (Serviço)'
+            };
+
+            item.textContent = `[${horaFormatada}] - ${traducoes[tipo]}`;
+            lista.prepend(item);
+        }
+
+        setInterval(atualizarRelogio, 1000);
+        atualizarRelogio();
+    </script>
+</body>
+</html>
